@@ -1,122 +1,109 @@
-from mesa import Agent, Model
-from mesa.time import RandomActivation
 import random
+import matplotlib.pyplot as plt
+
+# Task class
 
 
 class Task:
-    def __init__(self, project_id, duration, is_review=False):
+    def __init__(self, task_id, project_id, duration):
+        self.task_id = task_id
         self.project_id = project_id
-        self.duration = duration  # Time required to complete the task
-        self.is_review = is_review  # Whether the task is a review task
+        self.duration = duration
 
 
-class TeamMember(Agent):
-    def __init__(self, unique_id, model):
-        super().__init__(unique_id, model)
-        self.current_task = None
-        self.time_remaining = 0
+# Simulation function
+def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_duration):
+    # Generate tasks for projects
+    tasks = []
+    task_id = 1
+    for project_id in range(num_projects):
+        num_tasks = random.randint(5, 20)  # Each project has 5-20 tasks
+        for _ in range(num_tasks):
+            task_duration = random.randint(1, max_duration)
+            tasks.append(
+                Task(task_id=task_id, project_id=project_id, duration=task_duration))
+            task_id += 1
 
-    def assign_task(self, task):
-        self.current_task = task
-        self.time_remaining = task.duration
+    # Team member activity
+    team_activity = {member: [] for member in range(num_team_members)}
+    task_queue = tasks[:]
+    ongoing_tasks = {}
+    project_assignments = {project_id: 0 for project_id in range(num_projects)}
+    time_steps = 0
 
-    def step(self):
-        if self.current_task:
-            self.time_remaining -= 1
-            if self.time_remaining <= 0:
-                # Task completed
-                if self.current_task.is_review:
-                    # Review task completed
-                    self.model.mark_task_complete(self.current_task)
-                else:
-                    # Main task completed, generate review task
-                    self.model.generate_review_task(self.current_task)
-                self.current_task = None
-        else:
-            # If no task, pick a random task from the queue
-            if self.model.task_queue:
-                random_task = random.choice(self.model.task_queue)
-                self.model.task_queue.remove(random_task)
-                self.assign_task(random_task)
+    while task_queue or any(ongoing_tasks.get(member, {}).get("remaining", 0) > 0 for member in range(num_team_members)):
+        time_steps += 1
+        for member in range(num_team_members):
+            if member in ongoing_tasks and ongoing_tasks[member]["remaining"] > 0:
+                # Continue working on current task
+                ongoing_tasks[member]["remaining"] -= 1
+                task_id = ongoing_tasks[member]["task"].task_id
+                team_activity[member].append((time_steps, task_id))
+            else:
+                # Switch to a new task randomly every 1-6 hours
+                if random.randint(1, 6) == 1 or member not in ongoing_tasks:
+                    if task_queue:
+                        # Find a task that respects the 2-member-per-project limit
+                        available_tasks = [
+                            task for task in task_queue if project_assignments[task.project_id] < 2
+                        ]
+                        if available_tasks:
+                            new_task = random.choice(available_tasks)
+                            task_queue.remove(new_task)
+                            ongoing_tasks[member] = {
+                                "task": new_task, "remaining": new_task.duration}
+                            project_assignments[new_task.project_id] += 1
+                            team_activity[member].append(
+                                (time_steps, new_task.task_id))
+                elif member not in ongoing_tasks or ongoing_tasks[member]["remaining"] <= 0:
+                    # If the current task is finished, decrement the project assignment count
+                    if member in ongoing_tasks and ongoing_tasks[member]["task"].project_id is not None:
+                        project_id = ongoing_tasks[member]["task"].project_id
+                        project_assignments[project_id] -= 1
+                    # Idle if no tasks available
+                    team_activity[member].append((time_steps, None))
 
-
-class StartupModel(Model):
-    def __init__(self, num_team_members, num_projects, seed=None):
-        super().__init__(seed=seed)
-        self.schedule = RandomActivation(self)
-        self.task_queue = []
-        self.projects = {i: {"tasks_remaining": 0, "start_time": None,
-                             "end_time": None} for i in range(num_projects)}
-        self.time = 0
-
-        # Generate initial tasks
-        for project_id in range(num_projects):
-            num_tasks = random.randint(5, 20)
-            self.projects[project_id]["tasks_remaining"] = num_tasks
-            for _ in range(num_tasks):
-                task_duration = random.randint(1, 10)
-                self.task_queue.append(Task(project_id, task_duration))
-
-        # Add team members
-        for i in range(num_team_members):
-            member = TeamMember(i, self)
-            self.schedule.add(member)
-
-    def generate_review_task(self, completed_task):
-        # Generate a review task with shorter duration
-        review_task_duration = random.randint(1, 3)  # Review tasks are shorter
-        review_task = Task(
-            project_id=completed_task.project_id,
-            duration=review_task_duration,
-            is_review=True
-        )
-        self.task_queue.append(review_task)
-
-    def mark_task_complete(self, task):
-        if task.project_id is not None:
-            project = self.projects[task.project_id]
-            project["tasks_remaining"] -= 1
-            if project["start_time"] is None:
-                project["start_time"] = self.time
-            if project["tasks_remaining"] == 0:
-                project["end_time"] = self.time
-
-    def step(self):
-        self.time += 1
-        self.schedule.step()
+    return team_activity, tasks, time_steps
 
 
-def run_simulation(num_projects, num_team_members, num_runs):
-    completion_times = []
+# Visualization
+def visualize_team_activity_with_completion(team_activity, tasks, time_steps):
+    task_colors = {task.task_id: f"C{task.task_id % 10}" for task in tasks}
+    fig, ax = plt.subplots(figsize=(15, 8))
 
-    for _ in range(num_runs):
-        model = StartupModel(
-            num_team_members=num_team_members, num_projects=num_projects)
-        while any(project["end_time"] is None for project in model.projects.values()):
-            model.step()
-        project_times = [
-            project["end_time"] - project["start_time"]
-            for project in model.projects.values()
-            if project["end_time"] is not None
-        ]
-        completion_times.extend(project_times)
+    for member, activity in team_activity.items():
+        for start_time, task_id in activity:
+            if task_id is not None:
+                ax.barh(
+                    member,
+                    width=1,
+                    left=start_time,
+                    color=task_colors[task_id],
+                    edgecolor="black",
+                )
 
-    average_time = sum(completion_times) / len(completion_times)
-    return average_time
+    ax.set_yticks(range(len(team_activity)))
+    ax.set_yticklabels([f"Team Member {m}" for m in team_activity])
+    ax.set_xticks(range(0, time_steps + 1, 10))
+    ax.set_xlabel("Time (hours)")
+    ax.set_ylabel("Team Members")
+    ax.set_title(f"Team Members' Task Activity Over {
+                 time_steps} Hours (Until Completion)")
+    ax.grid(True, axis="x", linestyle="--", alpha=0.7)
+    plt.show()
 
 
-if __name__ == "__main__":
-    results = {}
-    num_runs = 5
-    team_size = 5
+# Parameters
+num_team_members = 15
+num_projects = 5
+max_task_duration = 72  # Max duration for a task
 
-    for projects in range(1, 6):  # Vary number of simultaneous projects from 1 to 5
-        avg_time = run_simulation(
-            num_projects=projects, num_team_members=team_size, num_runs=num_runs)
-        results[projects] = avg_time
-        print(f"Average completion time for {
-              projects} projects: {avg_time:.2f} time units")
+# Run simulation with the new limit
+team_activity, tasks, total_time_steps = simulate_team_until_complete_with_limit(
+    num_team_members=num_team_members,
+    num_projects=num_projects,
+    max_duration=max_task_duration,
+)
 
-    print("\n--- Summary ---")
-    for projects, avg_time in results.items():
-        print(f"{projects} projects: {avg_time:.2f} time units")
+# Visualize
+visualize_team_activity_with_completion(team_activity, tasks, total_time_steps)
