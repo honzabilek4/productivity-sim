@@ -1,6 +1,14 @@
 import random
 import matplotlib.pyplot as plt
 
+# Constants
+NUM_TEAM_MEMBERS = 10  # Number of team members
+NUM_PROJECTS = 10     # Number of projects
+MAX_TASK_DURATION = 72  # Max duration for a task
+MIN_TASKS_PER_PROJECT = 5  # Minimum number of tasks per project
+MAX_TASKS_PER_PROJECT = 20  # Maximum number of tasks per project
+TASK_SWITCH_INTERVAL = 6   # Max interval (in hours) for random task switching
+
 # Task class
 
 
@@ -10,14 +18,16 @@ class Task:
         self.project_id = project_id
         self.duration = duration
 
-
 # Simulation function
+
+
 def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_duration):
     # Generate tasks for projects
     tasks = []
     task_id = 1
     for project_id in range(num_projects):
-        num_tasks = random.randint(5, 20)  # Each project has 5-20 tasks
+        num_tasks = random.randint(
+            MIN_TASKS_PER_PROJECT, MAX_TASKS_PER_PROJECT)
         for _ in range(num_tasks):
             task_duration = random.randint(1, max_duration)
             tasks.append(
@@ -29,6 +39,7 @@ def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_
     task_queue = tasks[:]
     ongoing_tasks = {}
     project_assignments = {project_id: 0 for project_id in range(num_projects)}
+    completed_projects = set()
     time_steps = 0
 
     while task_queue or any(ongoing_tasks.get(member, {}).get("remaining", 0) > 0 for member in range(num_team_members)):
@@ -40,8 +51,29 @@ def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_
                 task_id = ongoing_tasks[member]["task"].task_id
                 team_activity[member].append((time_steps, task_id))
             else:
-                # Switch to a new task randomly every 1-6 hours
-                if random.randint(1, 6) == 1 or member not in ongoing_tasks:
+                # Check if the current task is finished
+                if member in ongoing_tasks and ongoing_tasks[member]["remaining"] == 0:
+                    completed_task = ongoing_tasks[member]["task"]
+                    print(f"Time {time_steps}: Task {completed_task.task_id} from Project {
+                          completed_task.project_id} completed.")
+                    project_id = completed_task.project_id
+                    project_assignments[project_id] -= 1
+
+                    # Check if all tasks for the project are completed
+                    if all(
+                        task.project_id != project_id
+                        or task.duration == 0
+                        for task in tasks
+                    ):
+                        if project_id not in completed_projects:
+                            completed_projects.add(project_id)
+                            print(f"Time {time_steps}: Project {
+                                  project_id} completed.")
+
+                    del ongoing_tasks[member]
+
+                # Switch to a new task randomly every 1-TASK_SWITCH_INTERVAL hours
+                if random.randint(1, TASK_SWITCH_INTERVAL) == 1 or member not in ongoing_tasks:
                     if task_queue:
                         # Find a task that respects the 2-member-per-project limit
                         available_tasks = [
@@ -65,8 +97,9 @@ def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_
 
     return team_activity, tasks, time_steps
 
-
 # Visualization
+
+
 def visualize_team_activity_with_completion(team_activity, tasks, time_steps):
     task_colors = {task.task_id: f"C{task.task_id % 10}" for task in tasks}
     fig, ax = plt.subplots(figsize=(15, 8))
@@ -93,16 +126,11 @@ def visualize_team_activity_with_completion(team_activity, tasks, time_steps):
     plt.show()
 
 
-# Parameters
-num_team_members = 15
-num_projects = 5
-max_task_duration = 72  # Max duration for a task
-
 # Run simulation with the new limit
 team_activity, tasks, total_time_steps = simulate_team_until_complete_with_limit(
-    num_team_members=num_team_members,
-    num_projects=num_projects,
-    max_duration=max_task_duration,
+    num_team_members=NUM_TEAM_MEMBERS,
+    num_projects=NUM_PROJECTS,
+    max_duration=MAX_TASK_DURATION,
 )
 
 # Visualize
