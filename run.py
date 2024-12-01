@@ -122,34 +122,22 @@ def simulate_with_dependencies_and_overhead(num_team_members, num_projects, max_
 
     return team_activity, tasks, time_steps, context_switches, project_start_times
 
-# Generate a simulation report
+# Generate an overview report
 
 
-def generate_simulation_report(tasks, time_steps, num_projects, output_file="simulation_report.csv"):
-    report_data = []
-    for task in tasks:
-        report_data.append({
-            "Project ID": task.project_id,
-            "Task ID": task.task_id,
-            "Duration (hours)": task.duration,
-            "Required Skill": task.skill,
-            "Dependencies": ", ".join(map(str, task.dependencies)) if task.dependencies else "None",
-            "Completed": "Yes" if task.completed else "No"
-        })
-
-    # Convert to DataFrame for better presentation
-    df = pd.DataFrame(report_data)
-    df.to_csv(output_file, index=False)
-    print(f"\nSimulation Report saved to {output_file}")
-
-    print("\n--- Simulation Summary ---")
-    print(f"Total Projects: {num_projects}")
-    print(f"Total Tasks: {len(tasks)}")
+def generate_overview_report(tasks, time_steps, num_projects):
+    total_tasks = len(tasks)
+    average_duration = sum(task.duration for task in tasks) / total_tasks
+    print("\n--- Simulation Overview Report ---")
+    print(f"Number of Projects: {num_projects}")
+    print(f"Total Number of Tasks: {total_tasks}")
+    print(f"Average Task Duration: {average_duration:.2f} hours")
     print(f"Total Time Steps: {time_steps}")
-    print(f"Completed Tasks: {len(df[df['Completed'] == 'Yes'])}")
-    print(f"Incomplete Tasks: {len(df[df['Completed'] == 'No'])}")
     print("\n--- Task Details ---")
-    print(df.to_string(index=False))
+    for project_id in sorted(set(task.project_id for task in tasks)):
+        project_tasks = [
+            task for task in tasks if task.project_id == project_id]
+        print(f"Project {project_id}: {len(project_tasks)} tasks")
 
 # Visualization functions for results
 
@@ -185,24 +173,20 @@ def run_simulation_with_improvements(num_team_members, project_range, max_task_d
                 max_duration=max_task_duration,
             )
             total_time_steps += time_steps
-            if iteration == iterations - 1:
-                tasks_report = tasks
+            if iteration == 1:  # Generate overview for the first iteration
+                generate_overview_report(tasks, time_steps, num_projects)
 
         average_time = total_time_steps / iterations
         results[num_projects] = average_time
         print(f"Projects: {num_projects}, Average Completion Time: {
               average_time:.2f} hours")
 
-        if num_projects == 8:
-            generate_simulation_report(
-                tasks_report, total_time_steps, num_projects)
-
     return results
 
 
 # Define the range of projects and run the simulation
-project_range = range(3, 26)
-iterations = 20
+project_range = range(1, 31)  # Run for one specific project count
+iterations = 20  # Run a single iteration
 average_completion_times = run_simulation_with_improvements(
     num_team_members=NUM_TEAM_MEMBERS,
     project_range=project_range,
