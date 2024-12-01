@@ -2,8 +2,7 @@ import random
 import matplotlib.pyplot as plt
 
 # Constants
-NUM_TEAM_MEMBERS = 10  # Number of team members
-NUM_PROJECTS = 10     # Number of projects
+NUM_TEAM_MEMBERS = 15  # Number of team members
 MAX_TASK_DURATION = 72  # Max duration for a task
 MIN_TASKS_PER_PROJECT = 5  # Minimum number of tasks per project
 MAX_TASKS_PER_PROJECT = 20  # Maximum number of tasks per project
@@ -97,41 +96,55 @@ def simulate_team_until_complete_with_limit(num_team_members, num_projects, max_
 
     return team_activity, tasks, time_steps
 
+# Run simulation and analyze
+
+
+def run_simulation_and_analyze(num_team_members, project_range, max_task_duration, iterations=100):
+    results = {}
+
+    for num_projects in project_range:
+        total_time_steps = 0
+
+        for _ in range(iterations):
+            _, _, time_steps = simulate_team_until_complete_with_limit(
+                num_team_members=num_team_members,
+                num_projects=num_projects,
+                max_duration=max_task_duration,
+            )
+            total_time_steps += time_steps
+
+        average_time = total_time_steps / iterations
+        results[num_projects] = average_time
+        print(f"Projects: {num_projects}, Average Completion Time: {
+              average_time:.2f} hours")
+
+    return results
+
 # Visualization
 
 
-def visualize_team_activity_with_completion(team_activity, tasks, time_steps):
-    task_colors = {task.task_id: f"C{task.task_id % 10}" for task in tasks}
-    fig, ax = plt.subplots(figsize=(15, 8))
-
-    for member, activity in team_activity.items():
-        for start_time, task_id in activity:
-            if task_id is not None:
-                ax.barh(
-                    member,
-                    width=1,
-                    left=start_time,
-                    color=task_colors[task_id],
-                    edgecolor="black",
-                )
-
-    ax.set_yticks(range(len(team_activity)))
-    ax.set_yticklabels([f"Team Member {m}" for m in team_activity])
-    ax.set_xticks(range(0, time_steps + 1, 10))
-    ax.set_xlabel("Time (hours)")
-    ax.set_ylabel("Team Members")
-    ax.set_title(f"Team Members' Task Activity Over {
-                 time_steps} Hours (Until Completion)")
-    ax.grid(True, axis="x", linestyle="--", alpha=0.7)
+def visualize_average_completion_times(results):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(results.keys(), results.values(), edgecolor="black")
+    ax.set_xlabel("Number of Projects")
+    ax.set_ylabel("Average Completion Time (hours)")
+    ax.set_title("Average Project Completion Time by Number of Projects")
+    plt.xticks(list(results.keys()))
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.show()
 
 
-# Run simulation with the new limit
-team_activity, tasks, total_time_steps = simulate_team_until_complete_with_limit(
+# Define the range of projects (3 to 20) and run the simulation
+project_range = range(1, 30)  # From 3 to 20 projects
+iterations = 10  # Number of iterations for each simulation
+
+# Run the simulation and analyze
+average_completion_times = run_simulation_and_analyze(
     num_team_members=NUM_TEAM_MEMBERS,
-    num_projects=NUM_PROJECTS,
-    max_duration=MAX_TASK_DURATION,
+    project_range=project_range,
+    max_task_duration=MAX_TASK_DURATION,
+    iterations=iterations,
 )
 
-# Visualize
-visualize_team_activity_with_completion(team_activity, tasks, total_time_steps)
+# Visualize the results
+visualize_average_completion_times(average_completion_times)
