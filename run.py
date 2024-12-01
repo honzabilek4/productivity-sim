@@ -27,13 +27,16 @@ class Task:
         self.skill = skill
         self.completed = False
 
-# Generate tasks with dependencies and skills
+# Generate tasks with dependencies, skills, and staggered project start times
 
 
 def generate_tasks(num_projects, max_duration):
     tasks = []
+    project_start_times = {}
     task_id = 1
     for project_id in range(num_projects):
+        # Add a start delay for the project
+        project_start_times[project_id] = random.randint(0, 50)
         num_tasks = random.randint(
             MIN_TASKS_PER_PROJECT, MAX_TASKS_PER_PROJECT)
         project_tasks = []
@@ -53,7 +56,7 @@ def generate_tasks(num_projects, max_duration):
             project_tasks.append(task)
             tasks.append(task)
             task_id += 1
-    return tasks
+    return tasks, project_start_times
 
 # Check if all dependencies are completed
 
@@ -61,11 +64,11 @@ def generate_tasks(num_projects, max_duration):
 def are_dependencies_completed(task, task_map):
     return all(task_map[dep].completed for dep in task.dependencies)
 
-# Simulation function
+# Simulation function with staggered project starts
 
 
 def simulate_with_dependencies_and_overhead(num_team_members, num_projects, max_duration):
-    tasks = generate_tasks(num_projects, max_duration)
+    tasks, project_start_times = generate_tasks(num_projects, max_duration)
     task_map = {task.task_id: task for task in tasks}
     team_activity = {member: [] for member in range(num_team_members)}
     ongoing_tasks = {}
@@ -92,11 +95,13 @@ def simulate_with_dependencies_and_overhead(num_team_members, num_projects, max_
                     completed_task.completed = True
                     del ongoing_tasks[member]
 
-                # Assign new tasks that match the team member's skill and dependencies are completed
+                # Assign new tasks that match the team member's skill, dependencies, and project start time
                 available_tasks = [
                     task for task in task_queue
                     if TEAM_SKILLS[member % len(TEAM_SKILLS)] == task.skill
                     and are_dependencies_completed(task, task_map)
+                    # Check project start time
+                    and time_steps >= project_start_times[task.project_id]
                 ]
                 if available_tasks:
                     new_task = random.choice(available_tasks)
@@ -115,35 +120,36 @@ def simulate_with_dependencies_and_overhead(num_team_members, num_projects, max_
                 else:
                     team_activity[member].append((time_steps, None))
 
-    return team_activity, tasks, time_steps, context_switches
+    return team_activity, tasks, time_steps, context_switches, project_start_times
 
-# Gantt Chart with Context Switching Visualization
+# Generate a simulation report
 
 
-def visualize_gantt_chart_with_context_switching(team_activity, context_switches, time_steps, iteration, num_projects):
-    fig, ax = plt.subplots(figsize=(15, 8))
-    for member, activity in team_activity.items():
-        last_task_id = None
-        for start_time, task_id in activity:
-            if task_id is not None:
-                color = f"C{task_id % 10}"
-                if last_task_id is not None and task_id != last_task_id:
-                    color = "red"  # Highlight context switches in red
-                ax.barh(member, 1, left=start_time - 1,
-                        color=color, edgecolor="black")
-                last_task_id = task_id
-    ax.set_yticks(range(len(team_activity)))
-    ax.set_yticklabels([f"Team Member {m}" for m in range(len(team_activity))])
-    ax.set_xticks(range(0, time_steps + 1, 10))
-    ax.set_xlabel("Time Steps")
-    ax.set_ylabel("Team Members")
-    ax.set_title(f"Gantt Chart of Task Switches\nIteration {
-                 iteration} - {num_projects} Projects\nContext Switches Highlighted in Red")
-    plt.grid(axis="x", linestyle="--", alpha=0.7)
-    filename = f"gantt_chart_context_switching_iteration_{
-        iteration}_projects_{num_projects}.png"
-    plt.savefig(filename, dpi=300)
-    print(f"Gantt chart with context switching saved as {filename}")
+def generate_simulation_report(tasks, time_steps, num_projects, output_file="simulation_report.csv"):
+    report_data = []
+    for task in tasks:
+        report_data.append({
+            "Project ID": task.project_id,
+            "Task ID": task.task_id,
+            "Duration (hours)": task.duration,
+            "Required Skill": task.skill,
+            "Dependencies": ", ".join(map(str, task.dependencies)) if task.dependencies else "None",
+            "Completed": "Yes" if task.completed else "No"
+        })
+
+    # Convert to DataFrame for better presentation
+    df = pd.DataFrame(report_data)
+    df.to_csv(output_file, index=False)
+    print(f"\nSimulation Report saved to {output_file}")
+
+    print("\n--- Simulation Summary ---")
+    print(f"Total Projects: {num_projects}")
+    print(f"Total Tasks: {len(tasks)}")
+    print(f"Total Time Steps: {time_steps}")
+    print(f"Completed Tasks: {len(df[df['Completed'] == 'Yes'])}")
+    print(f"Incomplete Tasks: {len(df[df['Completed'] == 'No'])}")
+    print("\n--- Task Details ---")
+    print(df.to_string(index=False))
 
 # Visualization functions for results
 
@@ -160,7 +166,6 @@ def visualize_results_table_and_chart(results):
     plt.xlabel("Number of Projects")
     plt.ylabel("Average Completion Time (hours)")
     plt.grid(True)
-    # plt.show()
     plt.savefig("results.png", dpi=300)
 
 # Run simulation and analyze
@@ -170,30 +175,33 @@ def run_simulation_with_improvements(num_team_members, project_range, max_task_d
     results = {}
     for num_projects in project_range:
         total_time_steps = 0
+        tasks_report = None
+
         for iteration in range(iterations):
             print(f"\nIteration {iteration + 1} for {num_projects} projects:")
-            team_activity, _, time_steps, context_switches = simulate_with_dependencies_and_overhead(
+            team_activity, tasks, time_steps, context_switches, project_start_times = simulate_with_dependencies_and_overhead(
                 num_team_members=num_team_members,
                 num_projects=num_projects,
                 max_duration=max_task_duration,
             )
             total_time_steps += time_steps
-
-            if (num_projects == 10 and iteration == 1):
-                # Generate Gantt chart for each iteration with context switching
-                visualize_gantt_chart_with_context_switching(
-                    team_activity, context_switches, time_steps, iteration + 1, num_projects
-                )
+            if iteration == iterations - 1:
+                tasks_report = tasks
 
         average_time = total_time_steps / iterations
         results[num_projects] = average_time
         print(f"Projects: {num_projects}, Average Completion Time: {
               average_time:.2f} hours")
+
+        if num_projects == 8:
+            generate_simulation_report(
+                tasks_report, total_time_steps, num_projects)
+
     return results
 
 
 # Define the range of projects and run the simulation
-project_range = range(3, 21)
+project_range = range(3, 26)
 iterations = 20
 average_completion_times = run_simulation_with_improvements(
     num_team_members=NUM_TEAM_MEMBERS,
